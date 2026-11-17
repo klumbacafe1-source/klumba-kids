@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Полий клумбу</title>
+<!-- Прототип детской игры для бота «Клумба». Один файл, без сети, без сбора данных, без рекламы. -->
+<style>
+  :root { --green: #3d4a3a; --leaf: #8fae7e; --cream: #f4efe2; --gold: #c9a45c; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--green); color: var(--cream);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; user-select: none; overflow: hidden; }
+  #app { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 12px; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: .5px; }
+  .bar { display: flex; gap: 16px; font-size: 20px; font-weight: 600; }
+  .bar span { background: rgba(255,255,255,.1); border-radius: 14px; padding: 6px 14px; min-width: 96px; text-align: center; }
+  #bed { flex: 1; width: 100%; max-width: 440px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(4, 1fr);
+    gap: 10px; background: #5b4636; border-radius: 28px; padding: 14px; border: 6px solid var(--gold); }
+  .pot { border: 0; border-radius: 20px; background: #6d543f; font-size: min(15vw, 64px); line-height: 1; display: flex;
+    align-items: center; justify-content: center; position: relative; transition: transform .12s, background .3s; cursor: pointer; }
+  .pot:active { transform: scale(.93); }
+  .pot.thirsty { background: #a8845e; animation: shake .5s infinite; }
+  .pot.thirsty::after { content: "💧"; position: absolute; top: 4px; right: 6px; font-size: 22px; }
+  .pot.dry { background: #8a7a6a; filter: grayscale(.7); }
+  .pot.splash { background: #7fb6d6; }
+  @keyframes shake { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+  #overlay { position: fixed; inset: 0; background: rgba(40,50,38,.94); display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 18px; padding: 24px; text-align: center; }
+  #overlay h2 { margin: 0; font-size: 30px; }
+  #overlay p { margin: 0; font-size: 19px; line-height: 1.4; max-width: 340px; }
+  #go { border: 0; border-radius: 999px; background: var(--gold); color: #2b2b22; font-size: 24px; font-weight: 700; padding: 16px 44px; cursor: pointer; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>🌿 Полий клумбу</h1>
+  <div class="bar"><span id="score">🌸 0</span><span id="time">⏱ 45</span></div>
+  <div id="bed"></div>
+</div>
+<div id="overlay">
+  <h2 id="title">Полий клумбу!</h2>
+  <p id="text">Квіточки хочуть пити 💧<br>Натискай на ту, що тремтить, поки вона не зів'яла.</p>
+  <button id="go">Грати</button>
+  <a id="back" href="index.html" style="color:#f4efe2;font-size:17px;opacity:.8">⬅ Інші ігри</a>
+</div>
+<script>
+(() => {
+  const FLOWERS = ['🌷', '🌻', '🌸', '🌼', '🌺', '🪻'];
+  const ROUND = 45, CELLS = 12;
+  const bed = document.getElementById('bed'), overlay = document.getElementById('overlay');
+  const scoreEl = document.getElementById('score'), timeEl = document.getElementById('time');
+  let pots = [], score = 0, left = ROUND, tick = null, spawn = null, running = false;
+
+  function build() {
+    bed.innerHTML = ''; pots = [];
+    for (let i = 0; i < CELLS; i++) {
+      const el = document.createElement('button');
+      el.className = 'pot'; el.textContent = '🌱';
+      const pot = { el, state: 'sprout', timer: null };
+      el.addEventListener('pointerdown', (e) => { e.preventDefault(); water(pot); });
+      bed.appendChild(el); pots.push(pot);
+    }
+  }
+  function thirst() {
+    if (!running) return;
+    const free = pots.filter((p) => p.state !== 'thirsty');
+    if (free.length) {
+      const p = free[Math.floor(Math.random() * free.length)];
+      p.state = 'thirsty'; p.el.className = 'pot thirsty';
+      if (p.el.textContent === '🥀') p.el.textContent = '🌱';
+      const patience = Math.max(1100, 2600 - (ROUND - left) * 30); // к концу раунда быстрее
+      p.timer = setTimeout(() => { if (p.state === 'thirsty') { p.state = 'dry'; p.el.className = 'pot dry'; p.el.textContent = '🥀'; } }, patience);
+    }
+    spawn = setTimeout(thirst, Math.max(380, 900 - (ROUND - left) * 11));
+  }
+  function water(p) {
+    if (!running || p.state !== 'thirsty') return;
+    clearTimeout(p.timer);
+    p.state = 'bloom'; score++;
+    p.el.className = 'pot splash';
+    p.el.textContent = FLOWERS[Math.floor(Math.random() * FLOWERS.length)];
+    setTimeout(() => { if (p.state === 'bloom') p.el.className = 'pot'; }, 250);
+    scoreEl.textContent = '🌸 ' + score;
+    if (navigator.vibrate) navigator.vibrate(15);
+  }
+  function start() {
+    build(); score = 0; left = ROUND; running = true;
+    scoreEl.textContent = '🌸 0'; timeEl.textContent = '⏱ ' + left;
+    overlay.classList.add('hidden');
+    tick = setInterval(() => { left--; timeEl.textContent = '⏱ ' + left; if (left <= 0) finish(); }, 1000);
+    spawn = setTimeout(thirst, 500);
+  }
+  function finish() {
+    running = false; clearInterval(tick); clearTimeout(spawn);
+    pots.forEach((p) => clearTimeout(p.timer));
+    const best = Math.max(score, Number(sessionStorage.getItem('best') || 0));
+    sessionStorage.setItem('best', best); // только на время, пока открыта игра; никуда не отправляется
+    document.getElementById('title').textContent = score >= 30 ? 'Ти справжній садівник! 🏆' : score >= 15 ? 'Чудова клумба! 🌼' : 'Гарний початок! 🌱';
+    document.getElementById('text').innerHTML = 'Розквітло квіточок: <b>' + score + '</b><br>Найкращий результат: <b>' + best + '</b>';
+    document.getElementById('go').textContent = 'Ще раз';
+    overlay.classList.remove('hidden');
+  }
+  document.getElementById('go').addEventListener('click', start);
+  build();
+  if (window.Telegram && Telegram.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+})();
+</script>
+</body>
+</html>

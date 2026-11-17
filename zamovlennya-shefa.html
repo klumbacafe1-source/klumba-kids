@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Замовлення шефа</title>
+<!-- Прототип игры для детей 7–12 лет, бот «Клумба». Один файл, без сети, без сбора данных, без рекламы.
+     Рекорд хранится только на этом устройстве (localStorage) и никуда не отправляется. -->
+<style>
+  :root { --green: #3d4a3a; --dark: #2b3529; --cream: #f4efe2; --gold: #c9a45c; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--green); color: var(--cream); overflow: hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; user-select: none; touch-action: none; }
+  #top { position: absolute; left: 0; right: 0; top: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }
+  .row { display: flex; justify-content: space-between; align-items: center; font-size: 19px; font-weight: 700; }
+  .pill { background: rgba(255,255,255,.12); border-radius: 14px; padding: 5px 12px; }
+  #order { background: var(--cream); color: #2b2b22; border-radius: 18px; padding: 8px 12px; display: flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 700; }
+  #order .need { font-size: 30px; display: flex; gap: 6px; }
+  #order .need span { position: relative; transition: opacity .2s; }
+  #order .need span.done { opacity: .28; }
+  #order .need span.done::after { content: "✔"; position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 22px; color: #1d7a3a; opacity: 1; }
+  #field { position: absolute; inset: 0; }
+  .item { position: absolute; font-size: 44px; line-height: 1; will-change: transform; pointer-events: none; }
+  #plate { position: absolute; bottom: 22px; width: 96px; height: 34px; margin-left: -48px; border-radius: 0 0 48px 48px / 0 0 34px 34px;
+    background: var(--cream); border: 4px solid var(--gold); border-top-width: 6px; box-shadow: 0 6px 0 rgba(0,0,0,.25); }
+  #plate.good { background: #cfe9c4; } #plate.bad { background: #f0b6a8; }
+  #flash { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: 30px; font-weight: 800; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 2; }
+  #overlay { position: fixed; inset: 0; background: rgba(40,50,38,.95); display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 16px; padding: 24px; text-align: center; z-index: 5; }
+  #overlay h2 { margin: 0; font-size: 30px; } #overlay p { margin: 0; font-size: 18px; line-height: 1.45; max-width: 340px; }
+  #go { border: 0; border-radius: 999px; background: var(--gold); color: #2b2b22; font-size: 24px; font-weight: 700; padding: 16px 44px; cursor: pointer; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="field"><div id="plate"></div></div>
+<div id="top">
+  <div class="row"><span class="pill" id="score">⭐ 0</span><span class="pill" id="level">Рівень 1</span><span class="pill" id="lives">❤️❤️❤️</span></div>
+  <div id="order"><span>Шеф просить:</span><span class="need" id="need"></span></div>
+</div>
+<div id="flash"></div>
+<div id="overlay">
+  <h2 id="title">👨‍🍳 Замовлення шефа</h2>
+  <p id="text">Води тарілкою і лови тільки те, що просить шеф.<br>Зібрав замовлення — отримуй бонус і нове, швидше!<br>Шишки, шкарпетки та каміння — не їжа: мінус серце 💔</p>
+  <button id="go">Грати</button>
+  <a id="back" href="index.html" style="color:#f4efe2;font-size:17px;opacity:.8">⬅ Інші ігри</a>
+</div>
+<script>
+(() => {
+  const FOOD = ['🍅', '🧀', '🥬', '🍄', '🥕', '🌽', '🍗', '🐟', '🥚', '🫑', '🧅', '🥒'];
+  const JUNK = ['🌰', '🧦', '🪨', '👟', '🍂'];
+  const field = document.getElementById('field'), plate = document.getElementById('plate');
+  const $ = (id) => document.getElementById(id);
+  let W = innerWidth, H = innerHeight, px = W / 2;
+  let items = [], order = [], got = [], score = 0, lives = 3, level = 1, running = false, last = 0, nextSpawn = 0, combo = 0;
+
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  function newOrder() {
+    const n = Math.min(3 + Math.floor((level - 1) / 3), 5);
+    order = []; while (order.length < n) { const f = pick(FOOD); if (!order.includes(f)) order.push(f); }
+    got = order.map(() => false);
+    drawOrder();
+  }
+  function drawOrder() {
+    $('need').innerHTML = order.map((f, i) => '<span class="' + (got[i] ? 'done' : '') + '">' + f + '</span>').join('');
+  }
+  function hud() {
+    $('score').textContent = '⭐ ' + score; $('level').textContent = 'Рівень ' + level;
+    $('lives').textContent = '❤️'.repeat(lives) + '🤍'.repeat(3 - lives);
+  }
+  function flash(text) { const f = $('flash'); f.textContent = text; f.style.opacity = 1; setTimeout(() => { f.style.opacity = 0; }, 700); }
+  function tint(cls) { plate.className = cls; setTimeout(() => { plate.className = ''; }, 180); }
+
+  function spawn() {
+    const r = Math.random();
+    const missing = order.filter((_, i) => !got[i]);
+    const ch = r < 0.42 && missing.length ? pick(missing) : r < 0.42 + Math.min(0.14 + level * 0.02, 0.32) ? pick(JUNK) : pick(FOOD);
+    const el = document.createElement('div');
+    el.className = 'item'; el.textContent = ch;
+    field.appendChild(el);
+    items.push({ el, ch, x: 26 + Math.random() * (W - 52), y: 96, v: (150 + level * 22) * (0.85 + Math.random() * 0.4) });
+  }
+  function caught(it) {
+    if (JUNK.includes(it.ch)) {
+      lives--; combo = 0; tint('bad'); if (navigator.vibrate) navigator.vibrate(120);
+      if (lives <= 0) { hud(); return finish(); }
+    } else {
+      const i = order.findIndex((f, k) => f === it.ch && !got[k]);
+      if (i >= 0) {
+        got[i] = true; combo++; score += 1 + Math.floor(combo / 4); tint('good'); drawOrder();
+        if (got.every(Boolean)) { score += 5 * level; level++; flash('Замовлення готове! +' + 5 * (level - 1)); newOrder(); }
+      } else { combo = 0; }
+    }
+    hud();
+  }
+  function frame(t) {
+    if (!running) return;
+    const dt = Math.min((t - last) / 1000, 0.05); last = t;
+    if (t > nextSpawn) { spawn(); nextSpawn = t + Math.max(330, 900 - level * 55); }
+    const plateY = H - 22 - 34;
+    for (const it of items) {
+      it.y += it.v * dt;
+      it.el.style.transform = 'translate(' + (it.x - 22) + 'px,' + it.y + 'px)';
+      if (!it.dead && it.y + 40 >= plateY && it.y + 40 <= plateY + 40 && Math.abs(it.x - px) < 58) { it.dead = true; caught(it); }
+      if (it.y > H) it.dead = true;
+    }
+    items = items.filter((it) => { if (it.dead) it.el.remove(); return !it.dead; });
+    if (running) requestAnimationFrame(frame);
+  }
+  function move(x) { px = Math.max(48, Math.min(W - 48, x)); plate.style.left = px + 'px'; }
+  addEventListener('pointermove', (e) => move(e.clientX));
+  addEventListener('pointerdown', (e) => move(e.clientX));
+  addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') move(px - 40); if (e.key === 'ArrowRight') move(px + 40); });
+  addEventListener('resize', () => { W = innerWidth; H = innerHeight; move(px); });
+
+  function start() {
+    items.forEach((it) => it.el.remove()); items = [];
+    score = 0; lives = 3; level = 1; combo = 0; running = true;
+    newOrder(); hud(); move(W / 2);
+    $('overlay').classList.add('hidden');
+    last = performance.now(); nextSpawn = last + 400;
+    requestAnimationFrame(frame);
+  }
+  function finish() {
+    running = false;
+    let best = 0;
+    try { best = Number(localStorage.getItem('klumba_chef_best') || 0); } catch (e) { /* хранилище недоступно */ }
+    const record = score > best;
+    if (record) { best = score; try { localStorage.setItem('klumba_chef_best', String(best)); } catch (e) { /* не страшно */ } }
+    $('title').textContent = record && score > 0 ? '🏆 Новий рекорд!' : level >= 6 ? 'Шеф у захваті! 👨‍🍳' : 'Кухня зачинена 🙂';
+    $('text').innerHTML = 'Зірок: <b>' + score + '</b> · рівень <b>' + level + '</b><br>Твій рекорд: <b>' + best + '</b><br>Зможеш більше?';
+    $('go').textContent = 'Ще раз';
+    $('overlay').classList.remove('hidden');
+  }
+  $('go').addEventListener('click', start);
+  move(W / 2); hud();
+  if (window.Telegram && Telegram.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+  if (location.search.includes('demo')) start();
+})();
+</script>
+</body>
+</html>
